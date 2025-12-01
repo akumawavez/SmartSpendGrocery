@@ -1,0 +1,27 @@
+# Task List
+
+- [x] Create `implementation_plan.md` leveraging Google ADK concepts <!-- id: 0 -->
+    - [x] Define Multi-agent system architecture (LLM, Parallel, Sequential, Loop) <!-- id: 1 -->
+    - [x] Define Tools (MCP, custom, built-in, OpenAPI) <!-- id: 2 -->
+    - [x] Define Long-running operations and Sessions/Memory <!-- id: 3 -->
+    - [x] Define Observability, Evaluation, A2A, and Deployment <!-- id: 4 -->
+- [x] Create `walkthrough.md` <!-- id: 5 -->
+    - [x] Document the architecture and flow <!-- id: 6 -->
+    - [x] Provide a step-by-step walkthrough of the user journey <!-- id: 7 -->
+- [x] Scaffold Project Structure <!-- id: 8 -->
+    - [x] Create directories (agents, tools, config) <!-- id: 9 -->
+    - [x] Create `requirements.txt` <!-- id: 10 -->
+    - [x] Create `config/adk_config.yaml` <!-- id: 11 -->
+- [x] Implement Core Agents <!-- id: 12 -->
+    - [x] `agents/orchestrator.py` <!-- id: 13 -->
+    - [x] `agents/receipt_processor.py` <!-- id: 14 -->
+    - [x] `agents/catalogue_matcher.py` <!-- id: 15 -->
+    - [x] `agents/finance_manager.py` <!-- id: 16 -->
+    - [x] `agents/analyst.py` <!-- id: 17 -->
+- [x] Implement Tools <!-- id: 18 -->
+    - [x] `tools/parser.py` <!-- id: 19 -->
+    - [x] `tools/scraper.py` <!-- id: 20 -->
+    - [x] `tools/mcp_server.py` <!-- id: 21 -->
+    - [x] `tools/budget_evaluator.py` <!-- id: 22 -->
+- [x] Entry Point <!-- id: 23 -->
+    - [x] `main.py` <!-- id: 24 -->

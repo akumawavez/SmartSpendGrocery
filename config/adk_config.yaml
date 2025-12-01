@@ -1,0 +1,15 @@
+project_id: smart-spend-grocery
+region: us-central1
+tracing:
+  enabled: true
+  exporter: console
+model:
+  name: gemini-1.5-pro
+  temperature: 0.2
+agents:
+  orchestrator:
+    model: gemini-1.5-pro
+  receipt_processor:
+    model: gemini-1.5-flash
+  finance:
+    model: gemini-1.5-pro
