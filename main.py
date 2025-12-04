@@ -10,6 +10,16 @@ import tempfile
 # Add the project root to the python path so imports work correctly
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# Initialize LLM configuration on startup
+try:
+    from config.llm_config import get_llm_config
+    # This will load .env and configure Google LLM
+    llm_config = get_llm_config()
+    st.session_state.llm_configured = True
+except Exception as e:
+    st.session_state.llm_configured = False
+    st.session_state.llm_error = str(e)
+
 
 # Page configuration
 st.set_page_config(
@@ -20,6 +30,17 @@ st.set_page_config(
 
 # Initialize session state
 if 'orchestrator' not in st.session_state:
+    # Check if LLM is configured before initializing orchestrator
+    if not st.session_state.get('llm_configured', False):
+        st.error(f"❌ LLM Configuration Error: {st.session_state.get('llm_error', 'Unknown error')}")
+        st.info("""
+        **Please set up your .env file:**
+        1. Copy `.env.example` to `.env` (if it exists)
+        2. Add your `GOOGLE_API_KEY` to the .env file
+        3. Get your API key from: https://makersuite.google.com/app/apikey
+        4. Restart the Streamlit app
+        """)
+        st.stop()
     st.session_state.orchestrator = OrchestratorAgent()
 if 'processing_result' not in st.session_state:
     st.session_state.processing_result = None
@@ -407,26 +428,35 @@ else:
             
             # Visual budget status chart
             st.markdown("#### 📈 Budget Status Overview")
-            status_df = pd.DataFrame([
-                {
+            chart_data = []
+            for item in planning_data:
+                spent_val = float(item['Spent'].replace('€', ''))
+                budget_val = float(item['Budget'].replace('€', ''))
+                percentage = (spent_val / budget_val * 100) if budget_val > 0 else 0
+                
+                # Determine color based on percentage
+                if percentage >= 100:
+                    color = 'red'
+                elif percentage >= 80:
+                    color = 'orange'
+                else:
+                    color = 'green'
+                
+                chart_data.append({
                     'Category': item['Category'],
-                    'Percentage Used': (float(item['Spent'].replace('€', '')) / float(item['Budget'].replace('€', '')) * 100) if float(item['Budget'].replace('€', '')) > 0 else 0
-                }
-                for item in planning_data
-            ])
+                    'Percentage Used': percentage,
+                    'Color': color
+                })
+            
+            status_df = pd.DataFrame(chart_data)
             
             chart = alt.Chart(status_df).mark_bar().encode(
                 x=alt.X('Category', sort='-y'),
                 y=alt.Y('Percentage Used', title='Budget Used (%)', scale=alt.Scale(domain=[0, 120])),
-                color=alt.condition(
-                    alt.datum['Percentage Used'] >= 100,
-                    alt.value('red'),
-                    alt.condition(
-                        alt.datum['Percentage Used'] >= 80,
-                        alt.value('orange'),
-                        alt.value('green')
-                    )
-                )
+                color=alt.Color('Color', scale=alt.Scale(
+                    domain=['green', 'orange', 'red'],
+                    range=['#28a745', '#ffc107', '#dc3545']
+                ), legend=None)
             ).properties(height=300)
             st.altair_chart(chart, use_container_width=True)
         else:

@@ -2,8 +2,8 @@ from agents.base import Agent
 from tools.parser import ReceiptParser
 
 class ReceiptProcessingAgent(Agent):
-    def __init__(self):
-        super().__init__(name="ReceiptProcessor")
+    def __init__(self, model=None):
+        super().__init__(name="ReceiptProcessor", model=model)
         self.parser = ReceiptParser()
 
     def execute(self, file_path):

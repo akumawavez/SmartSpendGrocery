@@ -305,7 +305,9 @@ Track combined expenses with partner/housemates.
 # 🚀 **How to Use**
 
 ### **1. Environment Setup**
-Ensure you have Python 3.10+ installed.
+Ensure you have **Python 3.12** installed (Python 3.11 is also supported as fallback).
+
+> **Note**: The project was previously using Python 3.9, which is end-of-life. See `SETUP_PYTHON.md` for upgrade instructions.
 
 ```bash
 # Install uv if not already installed

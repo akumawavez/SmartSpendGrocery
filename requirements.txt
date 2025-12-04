@@ -7,3 +7,4 @@ pandas
 altair
 python-dotenv
 openai
+Pillow

@@ -1,8 +1,8 @@
 from agents.base import Agent
 
 class AnalystAgent(Agent):
-    def __init__(self):
-        super().__init__(name="Analyst")
+    def __init__(self, model=None):
+        super().__init__(name="Analyst", model=model)
 
     def execute(self, finance_data):
         print("Generating analysis...")

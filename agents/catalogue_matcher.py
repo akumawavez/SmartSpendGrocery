@@ -2,8 +2,8 @@ from agents.base import Agent
 from tools.scraper import CatalogueScraper
 
 class CatalogueAgent(Agent):
-    def __init__(self):
-        super().__init__(name="CatalogueMatcher")
+    def __init__(self, model=None):
+        super().__init__(name="CatalogueMatcher", model=model)
         self.scraper = CatalogueScraper()
 
     def execute(self, raw_items):

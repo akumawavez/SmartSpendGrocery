@@ -3,8 +3,8 @@ from tools.mcp_server import SpendingMemoryMCP
 from tools.budget_evaluator import BudgetEvaluator
 
 class FinanceAgent(Agent):
-    def __init__(self):
-        super().__init__(name="FinanceManager")
+    def __init__(self, model=None):
+        super().__init__(name="FinanceManager", model=model)
         self.memory = SpendingMemoryMCP()
         self.evaluator = BudgetEvaluator()
 
