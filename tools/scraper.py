@@ -137,59 +137,61 @@ Dutch:"""
     
     def search_products_google(self, search_query, max_results=10):
         """
-        Search for products on Albert Heijn using Google Search via Gemini
+        Search for products on Albert Heijn using web scraping (primary) and Gemini (for structuring)
         Returns list of products with prices
         """
-        if not self._working_model:
-            # Try to get a working model if we don't have one
-            self._working_model = self._get_working_model()
-            if not self._working_model:
-                print("No working model available, falling back to web scraping")
-                return self.search_products_web_scrape(search_query, max_results)
-        
         # Translate English to Dutch for better search results
         dutch_query = self._translate_to_dutch(search_query)
         
+        # Primary method: Web scraping to get actual products from ah.nl
+        print(f"Searching Albert Heijn for: {dutch_query}")
+        products = self.search_products_web_scrape(dutch_query, max_results)
+        
+        # If web scraping didn't return enough results, try to enhance with Gemini
+        if len(products) < max_results and self._working_model:
+            print(f"Web scraping returned {len(products)} products, trying to enhance with Gemini...")
+            try:
+                # Use Gemini to structure and enhance the scraped data
+                enhanced_products = self._enhance_products_with_gemini(products, dutch_query, max_results - len(products))
+                products.extend(enhanced_products)
+            except Exception as e:
+                print(f"Gemini enhancement failed: {e}")
+        
+        return products[:max_results]
+    
+    def _enhance_products_with_gemini(self, existing_products, query, additional_needed):
+        """Use Gemini to generate additional product suggestions based on the query"""
+        if not self._working_model or additional_needed <= 0:
+            return []
+        
         try:
-            # Use Gemini to search and extract product information
-            prompt = f"""You are searching for products on Albert Heijn (ah.nl) website for the query: "{dutch_query}"
+            existing_names = [p.get('name', '') for p in existing_products]
+            
+            prompt = f"""Based on the search query "{query}" for Albert Heijn products, suggest {additional_needed} additional different products that would be available.
 
-CRITICAL REQUIREMENTS:
-1. Return EXACTLY {max_results} different products (or as many as available if less than {max_results})
-2. Include various brands, sizes, types, and varieties of the product
-3. Each product must be unique (different brand, size, or type)
-4. Search the actual ah.nl website and extract real product information
+Already found products: {', '.join(existing_names[:5])}
 
-Please provide a JSON array with EXACTLY {max_results} products (or fewer if not enough available) with the following structure:
+Provide a JSON array with {additional_needed} different products (different brands, sizes, or types) with this structure:
 [
     {{
-        "name": "Product full name from ah.nl",
-        "image_url": "Full URL to product image from ah.nl",
-        "price_without_membership": price in euros as float (e.g., 1.99),
-        "price_with_membership": price in euros as float if different, otherwise same as price_without_membership,
-        "discount_offer": "discount description in Dutch (e.g., 'BONUS', '2+1 GRATIS', '10% korting') or empty string '' if no discount",
-        "url": "product URL on ah.nl",
-        "category": "product category in English (e.g., 'Dairy', 'Fruit', 'Vegetables', 'Meat', 'Bakery', 'Beverages', 'Snacks')",
-        "is_bonus": true or false,
-        "unit": "unit description (e.g., '1L', '500g', 'per stuk')"
-    }},
-    ... (repeat for {max_results} products)
+        "name": "Product name",
+        "image_url": "",
+        "price_without_membership": estimated price as float,
+        "price_with_membership": same as price_without_membership,
+        "discount_offer": "",
+        "url": "",
+        "category": "category name",
+        "is_bonus": false,
+        "unit": "unit description"
+    }}
 ]
 
-Extract from Albert Heijn (ah.nl) website:
-- Real product names as they appear on ah.nl
-- Product images from ah.nl (use full URLs)
-- Actual prices in euros
-- Membership prices if available (AH Premium discounts)
-- Any BONUS offers or promotions
-- Proper product categories
-
-Return ONLY a valid JSON array with {max_results} products. No explanations, no markdown, just the JSON array."""
-
+Return only valid JSON array."""
+            
             response = self._working_model.generate_content(prompt)
             response_text = response.text.strip()
             
-            # Clean JSON response (remove markdown code blocks if present)
+            # Clean JSON response
             if response_text.startswith("```json"):
                 response_text = response_text[7:]
             if response_text.startswith("```"):
@@ -198,114 +200,189 @@ Return ONLY a valid JSON array with {max_results} products. No explanations, no 
                 response_text = response_text[:-3]
             response_text = response_text.strip()
             
-            products = json.loads(response_text)
+            additional_products = json.loads(response_text)
+            if isinstance(additional_products, list):
+                return additional_products[:additional_needed]
+            return []
             
-            # Ensure we have a list
-            if not isinstance(products, list):
-                print(f"Warning: Expected list but got {type(products)}")
-                return []
-            
-            # Log how many products were found
-            print(f"Found {len(products)} products from Gemini")
-            
-            # If we got fewer results than requested, that's okay - return what we have
-            if len(products) < max_results:
-                print(f"Note: Got {len(products)} products, requested {max_results}")
-            
-            # Limit results to max_results
-            return products[:max_results] if len(products) > max_results else products
-            
-        except json.JSONDecodeError as e:
-            print(f"Error parsing JSON response: {str(e)}")
-            try:
-                print(f"Response was: {response_text[:200]}...")
-            except:
-                print("Could not retrieve response text")
-            # Fallback to web scraping
-            return self.search_products_web_scrape(search_query, max_results)
         except Exception as e:
-            print(f"Error searching products with Gemini: {str(e)}")
-            # Fallback to web scraping
-            return self.search_products_web_scrape(search_query, max_results)
+            print(f"Error enhancing with Gemini: {e}")
+            return []
     
     def search_products_web_scrape(self, search_query, max_results=10):
         """
-        Alternative method: Scrape Albert Heijn website directly
-        This is a fallback if Google Search doesn't work well
+        Scrape Albert Heijn website directly to get real product data
+        This is the primary method for getting actual products
         """
         try:
-            # Translate to Dutch if needed
-            dutch_query = self._translate_to_dutch(search_query)
-            
             # Search URL for Albert Heijn
-            search_url = f"https://www.ah.nl/zoeken?query={dutch_query.replace(' ', '+')}"
+            search_url = f"https://www.ah.nl/zoeken?query={search_query.replace(' ', '+')}"
             
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'nl-NL,nl;q=0.9,en;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
             }
             
-            response = requests.get(search_url, headers=headers, timeout=10)
+            print(f"Fetching: {search_url}")
+            response = requests.get(search_url, headers=headers, timeout=15)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, 'html.parser')
             products = []
             
-            # Try to find product cards (this will need to be adjusted based on AH's actual HTML structure)
-            product_cards = soup.find_all('div', class_=re.compile(r'product|card|item', re.I))[:max_results]
+            # Albert Heijn uses specific data attributes and classes
+            # Try multiple selectors to find products
+            selectors = [
+                ('article', {'class': re.compile(r'product|card', re.I)}),
+                ('div', {'data-testid': re.compile(r'product', re.I)}),
+                ('div', {'class': re.compile(r'product-tile|product-card|product-item', re.I)}),
+                ('li', {'class': re.compile(r'product', re.I)}),
+            ]
             
-            for card in product_cards:
+            product_elements = []
+            for tag, attrs in selectors:
+                found = soup.find_all(tag, attrs)
+                if found:
+                    product_elements = found[:max_results * 2]  # Get more to filter
+                    print(f"Found {len(found)} elements using {tag} selector")
+                    break
+            
+            if not product_elements:
+                # Fallback: search for any element with product-related text
+                product_elements = soup.find_all(['div', 'article', 'li'], 
+                                                  string=re.compile(r'€|\d+[,.]\d{2}', re.I))[:max_results * 2]
+            
+            print(f"Processing {len(product_elements)} potential product elements")
+            
+            for element in product_elements[:max_results * 2]:
                 try:
-                    name_elem = card.find(['h2', 'h3', 'a'], class_=re.compile(r'title|name|product', re.I))
-                    price_elem = card.find(['span', 'div'], class_=re.compile(r'price', re.I))
+                    # Find product name
+                    name = ""
+                    name_selectors = [
+                        ('h3', {}),
+                        ('h2', {}),
+                        ('a', {'class': re.compile(r'link|title|name', re.I)}),
+                        ('span', {'class': re.compile(r'title|name|product-name', re.I)}),
+                    ]
                     
-                    if name_elem and price_elem:
-                        name = name_elem.get_text(strip=True)
-                        price_text = price_elem.get_text(strip=True)
-                        
-                        # Extract price (look for euro amounts)
-                        price_match = re.search(r'€?\s*(\d+[,.]?\d*)', price_text)
+                    for tag, attrs in name_selectors:
+                        name_elem = element.find(tag, attrs)
+                        if name_elem:
+                            name = name_elem.get_text(strip=True)
+                            if name and len(name) > 3:
+                                break
+                    
+                    if not name:
+                        continue
+                    
+                    # Find price
+                    price = None
+                    price_text = ""
+                    price_selectors = [
+                        ('span', {'class': re.compile(r'price|amount', re.I)}),
+                        ('div', {'class': re.compile(r'price', re.I)}),
+                        ('span', {'data-testid': re.compile(r'price', re.I)}),
+                    ]
+                    
+                    for tag, attrs in price_selectors:
+                        price_elem = element.find(tag, attrs)
+                        if price_elem:
+                            price_text = price_elem.get_text(strip=True)
+                            # Extract price (look for euro amounts)
+                            price_match = re.search(r'€?\s*(\d+[,.]?\d*)', price_text)
+                            if price_match:
+                                price = float(price_match.group(1).replace(',', '.'))
+                                break
+                    
+                    # Also search in element text if not found
+                    if price is None:
+                        element_text = element.get_text()
+                        price_match = re.search(r'€?\s*(\d+[,.]?\d{2})', element_text)
                         if price_match:
                             price = float(price_match.group(1).replace(',', '.'))
-                            
-                            # Try to find product image
-                            img_elem = card.find('img')
-                            image_url = ""
-                            if img_elem:
-                                image_url = img_elem.get('src', '') or img_elem.get('data-src', '')
-                                if image_url and not image_url.startswith('http'):
-                                    image_url = f"https://www.ah.nl{image_url}" if image_url.startswith('/') else ""
-                            
-                            # Try to find discount/bonus info
-                            bonus_elem = card.find(['span', 'div'], class_=re.compile(r'bonus|actie|korting|discount', re.I))
-                            discount_offer = ""
-                            is_bonus = False
-                            if bonus_elem:
-                                discount_offer = bonus_elem.get_text(strip=True)
-                                is_bonus = True
-                            elif "bonus" in price_text.lower() or "actie" in price_text.lower():
-                                discount_offer = "BONUS"
-                                is_bonus = True
-                            
-                            # Try to extract unit/volume
-                            unit_elem = card.find(['span', 'div'], class_=re.compile(r'unit|volume|size', re.I))
-                            unit = unit_elem.get_text(strip=True) if unit_elem else ""
-                            
-                            products.append({
-                                "name": name,
-                                "image_url": image_url,
-                                "price_without_membership": price,
-                                "price_with_membership": price,  # Default to same if not found
-                                "discount_offer": discount_offer,
-                                "url": "",
-                                "category": "Unknown",
-                                "is_bonus": is_bonus,
-                                "unit": unit
-                            })
-                except:
+                    
+                    if price is None:
+                        continue
+                    
+                    # Find product image
+                    image_url = ""
+                    img_elem = element.find('img')
+                    if img_elem:
+                        image_url = img_elem.get('src', '') or img_elem.get('data-src', '') or img_elem.get('data-lazy-src', '')
+                        if image_url:
+                            if image_url.startswith('//'):
+                                image_url = 'https:' + image_url
+                            elif image_url.startswith('/'):
+                                image_url = f"https://www.ah.nl{image_url}"
+                            elif not image_url.startswith('http'):
+                                image_url = f"https://www.ah.nl/{image_url}"
+                    
+                    # Find discount/bonus info
+                    discount_offer = ""
+                    is_bonus = False
+                    bonus_text = element.get_text()
+                    if re.search(r'bonus|actie|korting|aanbieding', bonus_text, re.I):
+                        is_bonus = True
+                        # Try to extract bonus text
+                        bonus_match = re.search(r'(bonus|actie|korting|aanbieding)[\s:]*([^\n]*)', bonus_text, re.I)
+                        if bonus_match:
+                            discount_offer = bonus_match.group(0)[:50]  # Limit length
+                        else:
+                            discount_offer = "BONUS"
+                    
+                    # Find unit/volume
+                    unit = ""
+                    unit_match = re.search(r'(\d+[.,]?\d*\s*(kg|g|L|l|ml|st|stuks?|x))', element.get_text(), re.I)
+                    if unit_match:
+                        unit = unit_match.group(1)
+                    
+                    # Determine category (simple heuristic)
+                    category = "Other"
+                    name_lower = name.lower()
+                    if any(word in name_lower for word in ['melk', 'kaas', 'yoghurt', 'boter', 'eieren']):
+                        category = "Dairy"
+                    elif any(word in name_lower for word in ['brood', 'bagel', 'croissant', 'krentenbol']):
+                        category = "Bakery"
+                    elif any(word in name_lower for word in ['banaan', 'appel', 'sinaasappel', 'aardbei']):
+                        category = "Fruit"
+                    elif any(word in name_lower for word in ['tomaat', 'komkommer', 'sla', 'wortel']):
+                        category = "Vegetables"
+                    elif any(word in name_lower for word in ['vlees', 'kip', 'rundvlees', 'worst']):
+                        category = "Meat"
+                    elif any(word in name_lower for word in ['bier', 'wijn', 'drank']):
+                        category = "Beverages"
+                    
+                    products.append({
+                        "name": name,
+                        "image_url": image_url,
+                        "price_without_membership": price,
+                        "price_with_membership": price,  # Default to same if not found
+                        "discount_offer": discount_offer,
+                        "url": "",
+                        "category": category,
+                        "is_bonus": is_bonus,
+                        "unit": unit
+                    })
+                    
+                    if len(products) >= max_results:
+                        break
+                        
+                except Exception as e:
+                    print(f"Error processing product element: {e}")
                     continue
             
+            print(f"Successfully scraped {len(products)} products")
             return products
             
+        except requests.exceptions.RequestException as e:
+            print(f"Network error scraping Albert Heijn: {str(e)}")
+            return []
         except Exception as e:
             print(f"Error web scraping: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return []
